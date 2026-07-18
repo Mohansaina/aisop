@@ -363,9 +363,9 @@ export default function ChatPage() {
         </header>
 
         {/* Main Conversation Window */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-8">
           {messages.length === 0 ? (
-            <div className="min-h-full flex flex-col items-center justify-start md:justify-center py-6 max-w-3xl mx-auto text-center space-y-10 select-none">
+            <div className="flex-1 flex flex-col items-center justify-start py-6 max-w-3xl mx-auto text-center space-y-10 select-none min-h-0">
               
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/[0.03] border border-indigo-500/10 text-indigo-300 text-[10px] font-bold shadow-lg uppercase tracking-widest">
