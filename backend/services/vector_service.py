@@ -1,23 +1,14 @@
 import os
 import uuid
 import chromadb
+import httpx
 from typing import List, Dict, Any
-from sentence_transformers import SentenceTransformer
 from backend.core.config import settings
 
 class VectorService:
     _model = None
     _client = None
     _collection = None
-
-    @classmethod
-    def get_model(cls) -> SentenceTransformer:
-        """
-        Lazily loads the SentenceTransformer model to speed up application startup.
-        """
-        if cls._model is None:
-            cls._model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
-        return cls._model
 
     @classmethod
     def get_client(cls) -> chromadb.PersistentClient:
@@ -32,11 +23,68 @@ class VectorService:
     def get_collection(cls) -> Any:
         """
         Gets or creates the ChromaDB collection for hospitality documents.
+        Uses a separate collection name for Nvidia NIM to avoid dimension mismatch (384 vs 1024).
         """
         if cls._collection is None:
             client = cls.get_client()
-            cls._collection = client.get_or_create_collection("hospitality_documents")
+            col_name = "hospitality_documents"
+            if settings.OPENROUTER_API_KEY and settings.OPENROUTER_API_KEY.startswith("nvapi-"):
+                col_name = "hospitality_documents_nv"
+            cls._collection = client.get_or_create_collection(col_name)
         return cls._collection
+
+    @classmethod
+    def _get_embeddings(cls, texts: List[str], input_type: str = "document") -> List[List[float]]:
+        """
+        Generates vector embeddings. Calls Nvidia NIM Embed API if key starts with 'nvapi-'.
+        Otherwise, falls back to local SentenceTransformer (lazy loaded).
+        """
+        if not settings.OPENROUTER_API_KEY:
+            return [[0.0] * 384] * len(texts)
+
+        if settings.OPENROUTER_API_KEY.startswith("nvapi-"):
+            try:
+                headers = {
+                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                all_embeddings = []
+                batch_size = 16
+                # Batch processing to prevent NIM payload threshold alerts
+                for i in range(0, len(texts), batch_size):
+                    batch = texts[i:i + batch_size]
+                    payload = {
+                        "input": batch,
+                        "model": "nvidia/embed-qa-4",
+                        "input_type": input_type,
+                        "encoding_format": "float"
+                    }
+                    with httpx.Client(timeout=30.0) as client:
+                        res = client.post(
+                            "https://integrate.api.nvidia.com/v1/embeddings",
+                            headers=headers,
+                            json=payload
+                        )
+                        res.raise_for_status()
+                        data = res.json()
+                        # Sort by original index to preserve ordering
+                        sorted_items = sorted(data["data"], key=lambda x: x["index"])
+                        embeddings = [item["embedding"] for item in sorted_items]
+                        all_embeddings.extend(embeddings)
+                return all_embeddings
+            except Exception as e:
+                print(f"[VectorService] Nvidia Cloud Embedding failed: {e}. Returning zero vectors.")
+                return [[0.0] * 1024] * len(texts)
+        else:
+            # Lazy import SentenceTransformer to prevent import crashes in environments without PyTorch
+            try:
+                from sentence_transformers import SentenceTransformer
+                if cls._model is None:
+                    cls._model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
+                return cls._model.encode(texts).tolist()
+            except ImportError:
+                print("[VectorService] sentence-transformers not installed. Returning zero vectors.")
+                return [[0.0] * 384] * len(texts)
 
     @classmethod
     def add_chunks(cls, document_id: str, filename: str, department: str, chunks: List[Dict[str, Any]]) -> List[str]:
@@ -45,10 +93,10 @@ class VectorService:
         Returns a list of chroma_ids.
         """
         collection = cls.get_collection()
-        model = cls.get_model()
-
         texts = [chunk["text"] for chunk in chunks]
-        embeddings = model.encode(texts).tolist()
+        
+        # Call the unified embeddings generator
+        embeddings = cls._get_embeddings(texts, input_type="document")
 
         ids = [str(uuid.uuid4()) for _ in chunks]
         metadatas = []
@@ -77,7 +125,6 @@ class VectorService:
         Removes all vector embeddings associated with a specific document ID.
         """
         collection = cls.get_collection()
-        # ChromaDB supports filtering by metadata key during delete
         collection.delete(where={"document_id": document_id})
 
     @classmethod
@@ -89,9 +136,12 @@ class VectorService:
             limit = settings.TOP_K
 
         collection = cls.get_collection()
-        model = cls.get_model()
-
-        query_embedding = model.encode([query]).tolist()[0]
+        
+        # Call the unified embeddings generator for the query
+        query_embeddings = cls._get_embeddings([query], input_type="query")
+        if not query_embeddings:
+            return []
+        query_embedding = query_embeddings[0]
         
         # Retrieve a larger pool of candidates to perform hybrid re-ranking
         candidate_limit = min(limit * 3, 20)
@@ -133,11 +183,12 @@ class VectorService:
                 # Boost if filename or section matches query words
                 meta = metas[i]
                 meta_boost = 0.0
-                filename_clean = meta.get("filename", "").lower().replace("_", " ")
-                section_clean = meta.get("section", "").lower().replace("_", " ")
-                for token in query_tokens:
-                    if token in filename_clean or token in section_clean:
-                        meta_boost += 0.15
+                if meta:
+                    filename_clean = meta.get("filename", "").lower().replace("_", " ")
+                    section_clean = meta.get("section", "").lower().replace("_", " ")
+                    for token in query_tokens:
+                        if token in filename_clean or token in section_clean:
+                            meta_boost += 0.15
 
                 hybrid_score = semantic_score + (0.35 * keyword_score) + numeric_boost + meta_boost
 

@@ -242,25 +242,22 @@ def execute_intent_node(state: AgentState) -> Dict[str, Any]:
                     search_query = f"{' '.join(keywords)} {query}"
 
         results = search_documents(search_query, limit=7)
-        if not results:
-            return {
-                "messages": [{"role": "assistant", "content": "I couldn't find any relevant operational documents matching your query in the current knowledge base."}]
-            }
-            
         context_blocks = []
-        for res in results:
-            meta = res["metadata"]
-            block = (f"Document: {meta['filename']}\n"
-                     f"Section: {meta.get('section', 'General')}\n"
-                     f"Page: {meta.get('page_number', 1)}\n"
-                     f"Content:\n{res['text']}")
-            context_blocks.append(block)
-            
-            citations.append({
-                "filename": meta["filename"],
-                "section": meta.get("section", "General"),
-                "page": meta.get("page_number", 1)
-            })
+        if results:
+            for res in results:
+                meta = res.get("metadata", {})
+                if meta:
+                    block = (f"Document: {meta.get('filename', '')}\n"
+                             f"Section: {meta.get('section', 'General')}\n"
+                             f"Page: {meta.get('page_number', 1)}\n"
+                             f"Content:\n{res['text']}")
+                    context_blocks.append(block)
+                    
+                    citations.append({
+                        "filename": meta.get("filename", ""),
+                        "section": meta.get("section", "General"),
+                        "page": meta.get("page_number", 1)
+                    })
             
         context_str = "\n\n---\n\n".join(context_blocks)
         
@@ -272,21 +269,24 @@ def execute_intent_node(state: AgentState) -> Dict[str, Any]:
         answer = call_llm(messages)
         # Fallback to local RAG extraction if the cloud LLM provider is blocked/rate-limited
         if "error" in answer.lower() or "429" in answer or "402" in answer or "payment" in answer.lower():
-            fallback_intro = (
-                "⚠️ **Local Retrieval Mode** (Cloud AI Service Rate-Limited)\n\n"
-                "I retrieved the following operational sections directly from your Standard Operating Procedures:\n\n"
-            )
-            paragraphs = []
-            for i, res in enumerate(results[:3], 1):
-                meta = res["metadata"]
-                clean_text = res["text"].strip()
-                if len(clean_text) > 450:
-                    clean_text = clean_text[:450] + "..."
-                paragraphs.append(
-                    f"### {i}. {meta['filename'].replace('.md', '')} — *{meta.get('section', 'General')}*\n"
-                    f"{clean_text}\n"
+            if results:
+                fallback_intro = (
+                    "⚠️ **Local Retrieval Mode** (Cloud AI Service Rate-Limited)\n\n"
+                    "I retrieved the following operational sections directly from your Standard Operating Procedures:\n\n"
                 )
-            answer = fallback_intro + "\n".join(paragraphs)
+                paragraphs = []
+                for i, res in enumerate(results[:3], 1):
+                    meta = res.get("metadata", {})
+                    clean_text = res["text"].strip()
+                    if len(clean_text) > 450:
+                        clean_text = clean_text[:450] + "..."
+                    paragraphs.append(
+                        f"### {i}. {meta.get('filename', '').replace('.md', '')} — *{meta.get('section', 'General')}*\n"
+                        f"{clean_text}\n"
+                    )
+                answer = fallback_intro + "\n".join(paragraphs)
+            else:
+                answer = "⚠️ **Connection Error**: The cloud AI service is currently rate-limited, and no local operational documents match your general question. Please try again or check your API key credits."
 
         return {
             "messages": [{"role": "assistant", "content": answer}],
