@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.next/
+venv/
+.venv/
+env/
+.env
+
+# Python Caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Database & Logs
+database/
+*.log
+.system_generated/
+.gemini/
+brain/
+scratch/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
