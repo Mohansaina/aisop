@@ -275,7 +275,7 @@ export default function ChatPage() {
   ];
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-zinc-950 p-4 gap-4 relative">
+    <div className="flex-1 flex overflow-hidden gap-4 relative h-full w-full bg-transparent">
       {/* Background Dot Matrix Pattern */}
       <div className="absolute inset-0 grid-bg pointer-events-none z-0 opacity-80" />
 

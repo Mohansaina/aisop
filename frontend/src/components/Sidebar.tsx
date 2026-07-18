@@ -35,8 +35,8 @@ export default function Sidebar() {
 
       {/* Sidebar Wrapper */}
       <div className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-zinc-900/20 border border-white/[0.04] backdrop-blur-xl rounded-2xl m-4 mr-0 flex flex-col justify-between transition-transform duration-300 ease-in-out shadow-2xl
-        lg:static lg:translate-x-0 lg:h-[calc(100vh-2rem)]
+        fixed inset-y-0 left-0 z-40 w-72 bg-zinc-900/20 border border-white/[0.04] backdrop-blur-xl rounded-2xl flex flex-col justify-between transition-transform duration-300 ease-in-out shadow-2xl
+        lg:static lg:translate-x-0 lg:h-full
         ${isOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         {/* Top Header */}

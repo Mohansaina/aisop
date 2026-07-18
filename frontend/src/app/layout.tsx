@@ -17,13 +17,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
-      <body className={`${outfit.className} h-full w-full flex relative overflow-hidden`}>
+      <body className={`${outfit.className} h-screen w-screen flex p-4 gap-4 relative overflow-hidden bg-zinc-950`}>
         {/* Background Ambient Glows */}
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none z-0" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-violet-900/10 rounded-full blur-[120px] pointer-events-none z-0" />
         
         <Sidebar />
-        <main className="flex-1 h-full flex flex-col overflow-hidden relative z-10 bg-zinc-950/60 backdrop-blur-3xl">
+        <main className="flex-1 h-full flex flex-col overflow-hidden relative z-10">
           {children}
         </main>
       </body>
